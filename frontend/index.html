@@ -1,0 +1,98 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>SysMonitor</title>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: 'Segoe UI', sans-serif; background: #0f172a; color: #e2e8f0; padding: 2rem; }
+    h1 { text-align: center; margin-bottom: 2rem; color: #38bdf8; font-size: 2rem; }
+    .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 1.5rem; }
+    .card { background: #1e293b; border-radius: 1rem; padding: 1.5rem; }
+    .card h2 { font-size: 1rem; color: #94a3b8; margin-bottom: 1rem; text-transform: uppercase; }
+    .value { font-size: 2.5rem; font-weight: bold; color: #38bdf8; }
+    .sub { font-size: 0.85rem; color: #64748b; margin-top: 0.5rem; }
+    canvas { margin-top: 1rem; }
+  </style>
+</head>
+<body>
+  <h1>🖥️ SysMonitor</h1>
+  <div class="grid">
+    <div class="card">
+      <h2>CPU</h2>
+      <div class="value" id="cpu">--%</div>
+      <canvas id="cpuChart" height="80"></canvas>
+    </div>
+    <div class="card">
+      <h2>RAM</h2>
+      <div class="value" id="ram">--%</div>
+      <div class="sub" id="ramDetail"></div>
+    </div>
+    <div class="card">
+      <h2>Disco</h2>
+      <div class="value" id="disk">--%</div>
+      <div class="sub" id="diskDetail"></div>
+    </div>
+    <div class="card">
+      <h2>Red</h2>
+      <div class="sub" id="net">--</div>
+    </div>
+  </div>
+
+  <script>
+    const API = "http://localhost:8000/metrics";
+    const cpuHistory = Array(20).fill(0);
+
+    const cpuChart = new Chart(document.getElementById("cpuChart"), {
+      type: "line",
+      data: {
+        labels: Array(20).fill(""),
+        datasets: [{ data: cpuHistory, borderColor: "#38bdf8", fill: true,
+          backgroundColor: "rgba(56,189,248,0.1)", tension: 0.4, pointRadius: 0 }]
+      },
+      options: { plugins: { legend: { display: false } }, scales: { y: { min: 0, max: 100 } } }
+    });
+
+    function fmt(bytes) {
+      return (bytes / 1024 / 1024 / 1024).toFixed(1) + " GB";
+    }
+
+    async function fetchMetrics() {
+      try {
+        const res = await fetch(API);
+        const d = await res.json();
+
+        // CPU
+        document.getElementById("cpu").textContent = d.cpu + "%";
+        cpuHistory.push(d.cpu); cpuHistory.shift();
+        cpuChart.data.datasets[0].data = [...cpuHistory];
+        cpuChart.update();
+
+        // RAM
+        const ramPct = ((d.ram.used / d.ram.total) * 100).toFixed(1);
+        document.getElementById("ram").textContent = ramPct + "%";
+        document.getElementById("ramDetail").textContent =
+          `${fmt(d.ram.used)} usados de ${fmt(d.ram.total)}`;
+
+        // Disco
+        const diskPct = d.disk.percent;
+        document.getElementById("disk").textContent = diskPct + "%";
+        document.getElementById("diskDetail").textContent =
+          `${fmt(d.disk.used)} usados de ${fmt(d.disk.total)}`;
+
+        // Red
+        document.getElementById("net").innerHTML =
+          `⬆️ ${fmt(d.net.bytes_sent)} enviados<br>⬇️ ${fmt(d.net.bytes_recv)} recibidos`;
+
+      } catch (e) {
+        console.error("Error conectando al backend", e);
+      }
+    }
+
+    fetchMetrics();
+    setInterval(fetchMetrics, 2000);
+  </script>
+</body>
+</html>

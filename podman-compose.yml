@@ -1,0 +1,21 @@
+version: "3"
+
+services:
+  backend:
+    build: ./backend
+    container_name: sysmonitor-backend
+    ports:
+      - "8000:8000"
+    volumes:
+      - /proc:/host/proc:ro
+      - /sys:/host/sys:ro
+    restart: unless-stopped
+
+  frontend:
+    build: ./frontend
+    container_name: sysmonitor-frontend
+    ports:
+      - "80:80"
+    depends_on:
+      - backend
+    restart: unless-stopped
