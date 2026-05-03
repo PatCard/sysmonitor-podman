@@ -9,36 +9,84 @@
     * { box-sizing: border-box; margin: 0; padding: 0; }
     body { font-family: 'Segoe UI', sans-serif; background: #0f172a; color: #e2e8f0; padding: 2rem; }
     h1 { text-align: center; margin-bottom: 2rem; color: #38bdf8; font-size: 2rem; }
-    .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 1.5rem; }
+    .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 1.5rem; }
     .card { background: #1e293b; border-radius: 1rem; padding: 1.5rem; }
-    .card h2 { font-size: 1rem; color: #94a3b8; margin-bottom: 1rem; text-transform: uppercase; }
+    .card h2 { font-size: 1rem; color: #94a3b8; margin-bottom: 1rem; text-transform: uppercase; letter-spacing: 0.05em; }
     .value { font-size: 2.5rem; font-weight: bold; color: #38bdf8; }
-    .sub { font-size: 0.85rem; color: #64748b; margin-top: 0.5rem; }
+    .value.warn { color: #f59e0b; }
+    .value.danger { color: #ef4444; }
+    .sub { font-size: 0.85rem; color: #64748b; margin-top: 0.4rem; }
     canvas { margin-top: 1rem; }
+
+    /* Red */
+    .iface { border-top: 1px solid #334155; margin-top: 1rem; padding-top: 1rem; }
+    .iface:first-child { border-top: none; margin-top: 0; padding-top: 0; }
+    .iface-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.5rem; }
+    .iface-name { font-weight: bold; color: #e2e8f0; font-size: 0.95rem; }
+    .badge { font-size: 0.7rem; padding: 0.15rem 0.5rem; border-radius: 999px; font-weight: bold; }
+    .badge.up { background: #064e3b; color: #34d399; }
+    .badge.down { background: #450a0a; color: #f87171; }
+    .iface-row { display: flex; justify-content: space-between; font-size: 0.82rem; margin-top: 0.25rem; }
+    .iface-row .label { color: #64748b; }
+    .iface-row .val { color: #cbd5e1; }
+    .iface-row .val.err { color: #f87171; }
+    .speed-row { display: flex; justify-content: space-between; font-size: 0.88rem; margin-top: 0.4rem; }
+    .speed-up   { color: #34d399; font-weight: bold; }
+    .speed-down { color: #38bdf8; font-weight: bold; }
+
+    /* Temperatura */
+    .temp-row { display: flex; justify-content: space-between; align-items: center; margin-top: 0.4rem; }
+    .temp-label { font-size: 0.85rem; color: #94a3b8; }
+    .temp-val { font-size: 0.95rem; font-weight: bold; }
+    .temp-val.ok { color: #38bdf8; }
+    .temp-val.warn { color: #f59e0b; }
+    .temp-val.danger { color: #ef4444; }
+    .sensor-name { font-size: 0.75rem; color: #475569; margin-top: 0.6rem; margin-bottom: 0.1rem; }
+
+    /* Protocolos */
+    .proto-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 0.4rem; margin-top: 0.5rem; }
+    .proto-item { background: #0f172a; border-radius: 0.5rem; padding: 0.4rem 0.6rem; display: flex; justify-content: space-between; }
+    .proto-name { font-size: 0.8rem; color: #94a3b8; }
+    .proto-count { font-size: 0.85rem; font-weight: bold; color: #38bdf8; }
   </style>
 </head>
 <body>
   <h1>🖥️ SysMonitor</h1>
   <div class="grid">
+
     <div class="card">
       <h2>CPU</h2>
       <div class="value" id="cpu">--%</div>
       <canvas id="cpuChart" height="80"></canvas>
     </div>
+
     <div class="card">
       <h2>RAM</h2>
       <div class="value" id="ram">--%</div>
       <div class="sub" id="ramDetail"></div>
     </div>
+
     <div class="card">
       <h2>Disco</h2>
       <div class="value" id="disk">--%</div>
       <div class="sub" id="diskDetail"></div>
     </div>
+
     <div class="card">
-      <h2>Red</h2>
-      <div class="sub" id="net">--</div>
+      <h2>🌐 Red — Interfaces</h2>
+      <div id="netIfaces">Cargando...</div>
     </div>
+
+    <div class="card">
+      <h2>📡 Protocolos activos</h2>
+      <div id="protocols"><span class="sub">Cargando...</span></div>
+    </div>
+
+    <div class="card">
+      <h2>🌡️ Temperatura</h2>
+      <div id="temps"><span class="sub">Cargando...</span></div>
+    </div>
+
   </div>
 
   <script>
@@ -55,8 +103,23 @@
       options: { plugins: { legend: { display: false } }, scales: { y: { min: 0, max: 100 } } }
     });
 
-    function fmt(bytes) {
-      return (bytes / 1024 / 1024 / 1024).toFixed(1) + " GB";
+    function fmtBytes(bytes) {
+      if (bytes >= 1024 ** 3) return (bytes / 1024 ** 3).toFixed(1) + " GB";
+      if (bytes >= 1024 ** 2) return (bytes / 1024 ** 2).toFixed(1) + " MB";
+      if (bytes >= 1024)      return (bytes / 1024).toFixed(1) + " KB";
+      return bytes + " B";
+    }
+
+    function fmtSpeed(bps) {
+      if (bps >= 1024 ** 2) return (bps / 1024 ** 2).toFixed(1) + " MB/s";
+      if (bps >= 1024)      return (bps / 1024).toFixed(1) + " KB/s";
+      return bps.toFixed(0) + " B/s";
+    }
+
+    function tempColor(current, high, critical) {
+      if (critical && current >= critical) return "danger";
+      if (high && current >= high * 0.85)  return "warn";
+      return "ok";
     }
 
     async function fetchMetrics() {
@@ -65,28 +128,101 @@
         const d = await res.json();
 
         // CPU
-        document.getElementById("cpu").textContent = d.cpu + "%";
+        const cpuEl = document.getElementById("cpu");
+        cpuEl.textContent = d.cpu + "%";
+        cpuEl.className = "value" + (d.cpu > 90 ? " danger" : d.cpu > 70 ? " warn" : "");
         cpuHistory.push(d.cpu); cpuHistory.shift();
         cpuChart.data.datasets[0].data = [...cpuHistory];
         cpuChart.update();
 
         // RAM
         const ramPct = ((d.ram.used / d.ram.total) * 100).toFixed(1);
-        document.getElementById("ram").textContent = ramPct + "%";
+        const ramEl = document.getElementById("ram");
+        ramEl.textContent = ramPct + "%";
+        ramEl.className = "value" + (ramPct > 90 ? " danger" : ramPct > 70 ? " warn" : "");
         document.getElementById("ramDetail").textContent =
-          `${fmt(d.ram.used)} usados de ${fmt(d.ram.total)}`;
+          `${fmtBytes(d.ram.used)} usados de ${fmtBytes(d.ram.total)}`;
 
         // Disco
-        const diskPct = d.disk.percent;
-        document.getElementById("disk").textContent = diskPct + "%";
+        const diskEl = document.getElementById("disk");
+        diskEl.textContent = d.disk.percent + "%";
+        diskEl.className = "value" + (d.disk.percent > 90 ? " danger" : d.disk.percent > 70 ? " warn" : "");
         document.getElementById("diskDetail").textContent =
-          `${fmt(d.disk.used)} usados de ${fmt(d.disk.total)}`;
+          `${fmtBytes(d.disk.used)} usados de ${fmtBytes(d.disk.total)}`;
 
-        // Red
-        document.getElementById("net").innerHTML =
-          `⬆️ ${fmt(d.net.bytes_sent)} enviados<br>⬇️ ${fmt(d.net.bytes_recv)} recibidos`;
+        // Interfaces de red
+        const ifacesEl = document.getElementById("netIfaces");
+        let ifHtml = "";
+        for (const [name, iface] of Object.entries(d.net)) {
+          const hasErrors = iface.errin > 0 || iface.errout > 0 || iface.dropin > 0 || iface.dropout > 0;
+          ifHtml += `
+            <div class="iface">
+              <div class="iface-header">
+                <span class="iface-name">🔌 ${name}</span>
+                <span class="badge ${iface.is_up ? 'up' : 'down'}">${iface.is_up ? '● UP' : '● DOWN'}</span>
+              </div>
+              <div class="speed-row">
+                <span class="speed-up">⬆️ ${fmtSpeed(iface.speed_up)}</span>
+                <span class="speed-down">⬇️ ${fmtSpeed(iface.speed_down)}</span>
+              </div>
+              <div class="iface-row">
+                <span class="label">Total enviado</span>
+                <span class="val">${fmtBytes(iface.bytes_sent)}</span>
+              </div>
+              <div class="iface-row">
+                <span class="label">Total recibido</span>
+                <span class="val">${fmtBytes(iface.bytes_recv)}</span>
+              </div>
+              <div class="iface-row">
+                <span class="label">Paquetes ⬆️/⬇️</span>
+                <span class="val">${iface.packets_sent.toLocaleString()} / ${iface.packets_recv.toLocaleString()}</span>
+              </div>
+              ${hasErrors ? `
+              <div class="iface-row">
+                <span class="label">Errores ⬆️/⬇️</span>
+                <span class="val err">${iface.errout} / ${iface.errin}</span>
+              </div>
+              <div class="iface-row">
+                <span class="label">Drops ⬆️/⬇️</span>
+                <span class="val err">${iface.dropout} / ${iface.dropin}</span>
+              </div>` : ''}
+            </div>`;
+        }
+        ifacesEl.innerHTML = ifHtml;
 
-      } catch (e) {
+        // Protocolos
+        const protoEl = document.getElementById("protocols");
+        let protoHtml = '<div class="proto-grid">';
+        for (const [proto, count] of Object.entries(d.protocols)) {
+          protoHtml += `
+            <div class="proto-item">
+              <span class="proto-name">${proto}</span>
+              <span class="proto-count">${count}</span>
+            </div>`;
+        }
+        protoHtml += '</div>';
+        protoEl.innerHTML = protoHtml;
+
+        // Temperatura
+        const tempsEl = document.getElementById("temps");
+        if (!d.temps) {
+          tempsEl.innerHTML = '<span class="sub">No disponible en este sistema</span>';
+        } else {
+          let html = "";
+          for (const [sensor, entries] of Object.entries(d.temps)) {
+            html += `<div class="sensor-name">${sensor}</div>`;
+            for (const e of entries) {
+              const cls = tempColor(e.current, e.high, e.critical);
+              html += `<div class="temp-row">
+                <span class="temp-label">${e.label}</span>
+                <span class="temp-val ${cls}">${e.current.toFixed(1)}°C</span>
+              </div>`;
+            }
+          }
+          tempsEl.innerHTML = html;
+        }
+
+      } catch(e) {
         console.error("Error conectando al backend", e);
       }
     }
